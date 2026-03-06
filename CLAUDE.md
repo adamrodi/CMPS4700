@@ -44,7 +44,7 @@ numpy, pandas, matplotlib (with `MultipleLocator` for axis ticks), scikit-learn 
 
 ## Running Notebooks
 
-```
+```terminal
 jupyter notebook
 ```
 
