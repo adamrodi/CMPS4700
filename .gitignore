@@ -6,6 +6,3 @@ __pycache__/
 *.pyc
 *.pyo
 .ipynb_checkpoints/
-
-CLAUDE.md
-memory/
