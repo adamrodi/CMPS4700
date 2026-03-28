@@ -1,0 +1,76 @@
+{
+  "class_column": "class",
+  "drop_columns": [
+    "obj_ID",
+    "run_ID",
+    "rerun_ID",
+    "cam_col",
+    "field_ID",
+    "spec_obj_ID",
+    "plate",
+    "MJD",
+    "fiber_ID"
+  ],
+  "feature_columns": [
+    "u",
+    "g",
+    "r",
+    "i",
+    "z",
+    "alpha",
+    "delta",
+    "redshift"
+  ],
+  "random_seed": 4700,
+  "split_ratios": [
+    0.6,
+    0.2,
+    0.2
+  ],
+  "split_sizes": {
+    "train": 59999,
+    "validation": 19999,
+    "test": 20002
+  },
+  "split_class_distribution": {
+    "train": {
+      "GALAXY": 35667,
+      "QSO": 11376,
+      "STAR": 12956
+    },
+    "validation": {
+      "GALAXY": 11889,
+      "QSO": 3792,
+      "STAR": 4318
+    },
+    "test": {
+      "GALAXY": 11889,
+      "QSO": 3793,
+      "STAR": 4320
+    }
+  },
+  "clean_row_count": 100000,
+  "scaler": "zscore_train_fit",
+  "scaler_parameters": {
+    "means": {
+      "u": 21.910209065151086,
+      "g": 20.46088652510875,
+      "r": 19.643653034217238,
+      "i": 19.083390672561208,
+      "z": 18.60042673966233,
+      "alpha": 177.4848369996846,
+      "delta": 24.163195924894,
+      "redshift": 0.5762669521131544
+    },
+    "stds": {
+      "u": 40.97264585206335,
+      "g": 40.95550508350874,
+      "r": 1.8523633845343832,
+      "i": 1.7551065658996297,
+      "z": 40.93537195852741,
+      "alpha": 96.35983018016962,
+      "delta": 19.670142161926183,
+      "redshift": 0.729335875930631
+    }
+  }
+}
