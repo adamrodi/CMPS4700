@@ -34,6 +34,10 @@ Notes:
 """
 
 #%% IMPORTS                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+if __name__ == "__main__":
+    import os
+#
+
 import json
 from copy import deepcopy as dpcpy
 from pathlib import Path
@@ -61,7 +65,7 @@ FIGURE_DPI        = 140
 HEATMAP_CMAP      = "coolwarm"
 SCATTER_ALPHA     = 0.15
 SCATTER_IQR_MULT  = 3.0    # axis limits: Q1 - mult*IQR to Q3 + mult*IQR per PC
-SCATTER_PC_PAIRS  = ((1, 2), (1, 3), (2, 3), (3, 4), (4, 5))
+SCATTER_PC_PAIRS  = ((1, 2), (1, 3), (1, 4), (1, 5), (2, 3), (2, 4), (2, 5), (3, 4), (3, 5), (4, 5))
 SCATTER_SIZE      = 8
 THRESHOLD_COLOR   = "red"
 
@@ -304,7 +308,7 @@ def _plot_pca_scatter(pca_frames, n_components, output_path):
     train_df    = pca_frames["train"]
     valid_pairs = tuple((a, b) for (a, b) in SCATTER_PC_PAIRS if a <= n_components and b <= n_components)
     n_pairs     = len(valid_pairs)
-    n_cols      = 3
+    n_cols      = 2
     n_rows      = (n_pairs + n_cols - 1) // n_cols
 
     class_masks = {
@@ -335,8 +339,7 @@ def _plot_pca_scatter(pca_frames, n_components, output_path):
 
         axis.set_xlim(pc_limits[pc_a])
         axis.set_ylim(pc_limits[pc_b])
-        axis.set_xlabel(col_a)
-        axis.set_ylabel(col_b)
+        axis.set_title(f"PC{pc_a} vs PC{pc_b}")
         axis.grid(alpha=0.2)
     #
 
