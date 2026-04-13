@@ -60,7 +60,8 @@ CUTOFF_COLOR      = "orange"
 FIGURE_DPI        = 140
 HEATMAP_CMAP      = "coolwarm"
 SCATTER_ALPHA     = 0.15
-SCATTER_CLIP_PCT  = 0.01   # clip top/bottom 1% of PC values to exclude outliers
+SCATTER_IQR_MULT  = 3.0    # axis limits: Q1 - mult*IQR to Q3 + mult*IQR per PC
+SCATTER_PC_PAIRS  = ((1, 2), (1, 3), (2, 3), (3, 4), (4, 5))
 SCATTER_SIZE      = 8
 THRESHOLD_COLOR   = "red"
 
@@ -139,12 +140,12 @@ def _export_plots(pca, n_components, pca_frames, corr_matrix, paths):
     # Resolve output paths and dispatch to each plot function
     corr_heatmap_path = paths["output_dir"] / "plot_correlation_heatmap.png"
     cumvar_path       = paths["output_dir"] / "plot_pca_cumulative_variance.png"
-    scatter_path      = paths["output_dir"] / "plot_pca_scatter_pc1_pc2.png"
+    scatter_path      = paths["output_dir"] / "plot_pca_scatter_pairs.png"
     scree_path        = paths["output_dir"] / "plot_pca_scree.png"
 
     _plot_correlation_heatmap(corr_matrix, corr_heatmap_path)
     _plot_cumulative_variance(pca, n_components, cumvar_path)
-    _plot_pca_scatter(pca_frames, scatter_path)
+    _plot_pca_scatter(pca_frames, n_components, scatter_path)
     _plot_scree(pca, n_components, scree_path)
 #
 
@@ -194,26 +195,39 @@ def _fit_pca(train_df):
 
 def _get_paths():
     code_dir   = Path(__file__).resolve().parent
-    input_path = code_dir / "output" / "preprocessed_data.xlsx"
     model_dir  = code_dir / "model"
     output_dir = code_dir / "output"
 
     return {
-        "input_path": input_path,
-        "model_dir":  model_dir,
-        "output_dir": output_dir,
+        "model_dir":       model_dir,
+        "output_dir":      output_dir,
+        "test_path":       code_dir / "input" / "test"       / "test.csv",
+        "train_path":      code_dir / "input" / "train"      / "train.csv",
+        "validation_path": code_dir / "input" / "validation" / "validation.csv",
     }
 #
 
 
-def _load_splits(input_path):
-    # Read preprocessed Excel and partition rows by split label
-    full_df      = pd.read_excel(input_path, sheet_name="preprocessed_data")
+def _iqr_limits(series, mult):
+    # Compute outlier-resistant axis limits: Q1 - mult*IQR to Q3 + mult*IQR
+    q1  = float(series.quantile(0.25))
+    q3  = float(series.quantile(0.75))
+    iqr = q3 - q1
+    return (q1 - mult * iqr, q3 + mult * iqr)
+#
+
+
+def _load_splits(paths):
+    # Read each split from its dedicated CSV in code/input/<split>/
+    path_keys    = {
+        SPLIT_LABELS[0]: paths["train_path"],
+        SPLIT_LABELS[1]: paths["validation_path"],
+        SPLIT_LABELS[2]: paths["test_path"],
+    }
     split_frames = {label: None for label in SPLIT_LABELS}
 
     for split_label in SPLIT_LABELS:
-        split_mask              = full_df["split"] == split_label
-        split_frames[split_label] = dpcpy(full_df.loc[split_mask].reset_index(drop=True))
+        split_frames[split_label] = dpcpy(pd.read_csv(path_keys[split_label]))
     #
 
     return split_frames
@@ -284,43 +298,61 @@ def _plot_cumulative_variance(pca, n_components, output_path):
 #
 
 
-def _plot_pca_scatter(pca_frames, output_path):
-    # 2D scatter of PC1 vs PC2 on the training set, colored and shaped by class.
-    # Axis limits are clipped to the central (1-clip, clip) percentile range to
-    # prevent extreme outliers from compressing the bulk of the data.
+def _plot_pca_scatter(pca_frames, n_components, output_path):
+    # Grid of scatter plots for selected PC pairs (training set only).
+    # Axes use IQR-based limits to show structure while excluding extreme outliers.
     train_df    = pca_frames["train"]
+    valid_pairs = tuple((a, b) for (a, b) in SCATTER_PC_PAIRS if a <= n_components and b <= n_components)
+    n_pairs     = len(valid_pairs)
+    n_cols      = 3
+    n_rows      = (n_pairs + n_cols - 1) // n_cols
+
     class_masks = {
         cls: train_df[train_df[CLASS_COLUMN] == cls]
         for cls in sorted(CLASS_COLORS.keys())
     }
+    pc_limits   = {
+        k: _iqr_limits(train_df[f"PC{k}"], SCATTER_IQR_MULT)
+        for k in range(1, n_components + 1)
+    }
 
-    lo, hi  = SCATTER_CLIP_PCT, 1.0 - SCATTER_CLIP_PCT
-    x_limits = (train_df["PC1"].quantile(lo), train_df["PC1"].quantile(hi))
-    y_limits = (train_df["PC2"].quantile(lo), train_df["PC2"].quantile(hi))
+    figure, axes = plt.subplots(n_rows, n_cols, figsize=(15, n_rows * 5))
+    axes_flat    = axes.ravel()
 
-    fig, axis = plt.subplots(figsize=(9, 6))
-    for cls in sorted(CLASS_COLORS.keys()):
-        mask = class_masks[cls]
-        axis.scatter(
-            mask["PC1"], mask["PC2"],
-            c=CLASS_COLORS[cls], marker=CLASS_MARKERS[cls],
-            s=SCATTER_SIZE, alpha=SCATTER_ALPHA, label=cls,
-        )
+    for pair_index, (pc_a, pc_b) in enumerate(valid_pairs):
+        axis  = axes_flat[pair_index]
+        col_a = f"PC{pc_a}"
+        col_b = f"PC{pc_b}"
+
+        for cls in sorted(CLASS_COLORS.keys()):
+            mask = class_masks[cls]
+            axis.scatter(
+                mask[col_a], mask[col_b],
+                c=CLASS_COLORS[cls], marker=CLASS_MARKERS[cls],
+                s=SCATTER_SIZE, alpha=SCATTER_ALPHA, label=cls,
+            )
+        #
+
+        axis.set_xlim(pc_limits[pc_a])
+        axis.set_ylim(pc_limits[pc_b])
+        axis.set_xlabel(col_a)
+        axis.set_ylabel(col_b)
+        axis.grid(alpha=0.2)
     #
 
-    axis.set_xlim(x_limits)
-    axis.set_ylim(y_limits)
-    axis.set_title(
-        f"PCA Scatter: PC1 vs PC2 (Training Set, "
-        f"{int((1 - 2 * SCATTER_CLIP_PCT) * 100)}th pct view)"
+    for unused_index in range(n_pairs, n_rows * n_cols):
+        axes_flat[unused_index].set_visible(False)
+    #
+
+    handles, labels = axes_flat[0].get_legend_handles_labels()
+    figure.legend(
+        handles, labels, loc="upper center", ncol=len(CLASS_COLORS),
+        markerscale=3, fontsize=10, bbox_to_anchor=(0.5, 1.02),
     )
-    axis.set_xlabel("PC1")
-    axis.set_ylabel("PC2")
-    axis.legend(markerscale=3)
-    axis.grid(alpha=0.2)
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=FIGURE_DPI)
-    plt.close(fig)
+    figure.suptitle("PCA Scatter Plots by Component Pairs (Training Set)", y=1.05)
+    figure.tight_layout()
+    figure.savefig(output_path, dpi=FIGURE_DPI, bbox_inches="tight")
+    plt.close(figure)
 #
 
 
@@ -354,7 +386,7 @@ def main():
     paths = _get_paths()
     _ensure_output_dirs(paths)
 
-    split_frames          = _load_splits(paths["input_path"])
+    split_frames          = _load_splits(paths)
     corr_matrix           = _compute_correlation_matrix(split_frames["train"])
     pca, n_components     = _fit_pca(split_frames["train"])
     pca_frames            = _apply_pca(split_frames, pca, n_components)

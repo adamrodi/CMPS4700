@@ -59,6 +59,7 @@ SPLIT_LABELS = ("train", "validation", "test")
 BAR_COLOR_PRIMARY = "#1f77b4"
 BAR_COLOR_SECONDARY = "#ff7f0e"
 FIGURE_DPI = 140
+HIST_CLIP_PCT = 0.005  # percentile clip applied per feature to exclude sentinel outliers
 
 
 #%% INITIALIZATIONS             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -78,19 +79,25 @@ FIGURE_DPI = 140
 def _ensure_output_dirs(paths):
     paths["model_dir"].mkdir(parents=True, exist_ok=True)
     paths["output_dir"].mkdir(parents=True, exist_ok=True)
+    paths["test_dir"].mkdir(parents=True, exist_ok=True)
+    paths["train_dir"].mkdir(parents=True, exist_ok=True)
+    paths["validation_dir"].mkdir(parents=True, exist_ok=True)
 #
 
 
 def _get_paths():
     code_dir = Path(__file__).resolve().parent
     input_path = code_dir / "input" / "star_classification.csv"
-    model_dir = code_dir / "model"
+    model_dir  = code_dir / "model"
     output_dir = code_dir / "output"
 
     return {
-        "input_path": input_path,
-        "model_dir": model_dir,
-        "output_dir": output_dir,
+        "input_path":      input_path,
+        "model_dir":       model_dir,
+        "output_dir":      output_dir,
+        "test_dir":        code_dir / "input" / "test",
+        "train_dir":       code_dir / "input" / "train",
+        "validation_dir":  code_dir / "input" / "validation",
     }
 #
 
@@ -232,21 +239,47 @@ def _plot_split_distribution(split_frames, output_path):
 
 
 def _plot_feature_before_after(clean_df, preprocessed_df, output_path):
-    figure, axes = plt.subplots(4, 2, figsize=(12, 14))
-    axes = axes.ravel()
+    # 2-row grid: top row = before z-score, bottom row = after z-score.
+    # Each feature gets its own column with an independent x-axis per row,
+    # and percentile-based limits to exclude sentinel outlier values (-9999).
+    n_features = len(FEATURE_COLUMNS)
+    figure, axes = plt.subplots(2, n_features, figsize=(22, 8))
 
-    for axis_index, feature_name in enumerate(FEATURE_COLUMNS):
-        axis = axes[axis_index]
-        axis.hist(clean_df[feature_name], bins=40, alpha=0.45, density=True, label="clean")
-        axis.hist(preprocessed_df[feature_name], bins=40, alpha=0.45, density=True, label="zscore")
-        axis.set_title(feature_name)
-        axis.grid(axis="y", alpha=0.2)
+    for col_index, feature_name in enumerate(FEATURE_COLUMNS):
+        clean_vals  = clean_df[feature_name]
+        scaled_vals = preprocessed_df[feature_name]
 
-    handles, labels = axes[0].get_legend_handles_labels()
-    figure.legend(handles, labels, loc="upper center", ncol=2)
-    figure.suptitle("Feature Distributions: Before vs After Z-Score", y=0.995)
-    figure.tight_layout(rect=[0, 0, 1, 0.98])
-    figure.savefig(output_path, dpi=FIGURE_DPI)
+        lo_clean = float(clean_vals.quantile(HIST_CLIP_PCT))
+        hi_clean = float(clean_vals.quantile(1.0 - HIST_CLIP_PCT))
+
+        lo_scaled = float(scaled_vals.quantile(HIST_CLIP_PCT))
+        hi_scaled = float(scaled_vals.quantile(1.0 - HIST_CLIP_PCT))
+
+        top_axis = axes[0, col_index]
+        top_axis.hist(
+            clean_vals, bins=40, density=True,
+            color=BAR_COLOR_PRIMARY, alpha=0.8,
+            range=(lo_clean, hi_clean),
+        )
+        top_axis.set_xlim(lo_clean, hi_clean)
+        top_axis.set_title(feature_name)
+        top_axis.grid(axis="y", alpha=0.2)
+
+        bot_axis = axes[1, col_index]
+        bot_axis.hist(
+            scaled_vals, bins=40, density=True,
+            color=BAR_COLOR_SECONDARY, alpha=0.8,
+            range=(lo_scaled, hi_scaled),
+        )
+        bot_axis.set_xlim(lo_scaled, hi_scaled)
+        bot_axis.grid(axis="y", alpha=0.2)
+    #
+
+    axes[0, 0].set_ylabel("Before Z-Score\nDensity")
+    axes[1, 0].set_ylabel("After Z-Score\nDensity")
+    figure.suptitle("Feature Distributions: Before vs After Z-Score Scaling")
+    figure.tight_layout()
+    figure.savefig(output_path, dpi=FIGURE_DPI, bbox_inches="tight")
     plt.close(figure)
 #
 
@@ -306,6 +339,20 @@ def _export_plots(clean_df, split_frames, preprocessed_df, paths):
 #
 
 
+def _export_splits_csv(scaled_split_frames, paths):
+    # Write each split as a standalone CSV into its input subdirectory
+    dir_keys = {
+        SPLIT_LABELS[0]: paths["train_dir"],
+        SPLIT_LABELS[1]: paths["validation_dir"],
+        SPLIT_LABELS[2]: paths["test_dir"],
+    }
+    for split_label in SPLIT_LABELS:
+        output_path = dir_keys[split_label] / f"{split_label}.csv"
+        scaled_split_frames[split_label].to_csv(output_path, index=False)
+    #
+#
+
+
 def main():
     paths = _get_paths()
     _ensure_output_dirs(paths)
@@ -319,12 +366,15 @@ def main():
 
     preprocessed_df = _build_preprocessed_export_table(scaled_split_frames)
 
+    _export_splits_csv(scaled_split_frames, paths)
     _export_excel(raw_df, preprocessed_df, paths)
     _export_metadata(clean_df, split_frames, scaler_parameters, paths)
     _export_plots(clean_df, split_frames, preprocessed_df, paths)
 
     print("PA1 preprocessing completed successfully.")
-    print(f"Raw Excel: {(paths['output_dir'] / 'raw_data.xlsx').as_posix()}")
+    print(f"Train CSV    : {(paths['train_dir']      / 'train.csv').as_posix()}")
+    print(f"Validation CSV: {(paths['validation_dir'] / 'validation.csv').as_posix()}")
+    print(f"Test CSV     : {(paths['test_dir']        / 'test.csv').as_posix()}")
     print(f"Preprocessed Excel: {(paths['output_dir'] / 'preprocessed_data.xlsx').as_posix()}")
 #
 
