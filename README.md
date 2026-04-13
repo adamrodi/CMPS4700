@@ -4,7 +4,7 @@ Group B — Adam Rodi & Ron Logarbo
 
 ## Quick Start
 
-**1. Clone + setup the venv**
+### 1. Clone + setup the venv**
 
 ```bash
 python3 -m venv venv
@@ -12,8 +12,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**2. Run the preprocessing**
-
+### 2. Run the preprocessing
 ```bash
 python3 code/preprocess.py
 ```
@@ -32,7 +31,7 @@ We're building a stellar classification system using machine learning. The datas
 
 ## What's in Here
 
-```
+```text
 code/
   preprocess.py          — Preprocessing pipeline (PA1 + extensible)
   input/
