@@ -16,7 +16,7 @@ Authors:
     Group B
 
 Date Created     : 04-12-2026
-Date Last Updated: 04-12-2026
+Date Last Updated: 04-29-2026
 
 Doc:
     Stages (in order):
@@ -40,6 +40,7 @@ if __name__ == "__main__":
 #
 
 #custom imports
+import classifier
 import feature_extract
 import preprocess
 
@@ -47,7 +48,7 @@ import preprocess
 
 
 #%% CONSTANTS                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-PIPELINE_STAGES = ("preprocess", "feature_extract")
+PIPELINE_STAGES = ("preprocess", "feature_extract", "classifier")
 
 #%% CONFIGURATION               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -71,6 +72,9 @@ def main():
     print()
 
     feature_extract.main()
+    print()
+
+    classifier.main()
     print()
 
     print("Pipeline completed successfully.")

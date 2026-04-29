@@ -1,0 +1,20 @@
+{
+  "best_model_by_test_f1": "ANN",
+  "class_column": "class",
+  "feature_columns": [
+    "PC1",
+    "PC2",
+    "PC3",
+    "PC4",
+    "PC5"
+  ],
+  "models": [
+    "ANN",
+    "Decision Tree",
+    "K-NN",
+    "SVM"
+  ],
+  "random_seed": 4700,
+  "selection_metric": "test f1_weighted",
+  "split_column": "split"
+}
