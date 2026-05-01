@@ -43,6 +43,7 @@ if __name__ == "__main__":
 #
 
 import json
+import warnings
 from copy import deepcopy as dpcpy
 from pathlib import Path
 
@@ -52,9 +53,11 @@ import numpy as np
 import pandas as pd
 
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import f1_score
+from sklearn.metrics import log_loss
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 from sklearn.metrics import roc_auc_score
@@ -89,13 +92,11 @@ RANDOM_SEED     = 4700
 
 
 #Function definitions Start Here
+ANN_EPOCHS = 300
+
+
 def _build_models():
     models = {
-        "ANN": MLPClassifier(
-            hidden_layer_sizes=(64, 32),
-            max_iter=300,
-            random_state=RANDOM_SEED,
-        ),
         "Decision Tree": DecisionTreeClassifier(
             random_state=RANDOM_SEED,
         ),
@@ -113,6 +114,35 @@ def _build_models():
     }
 
     return models
+#
+
+
+def _train_ann_with_curves(x_train, y_train, x_val, y_val):
+    # Train ANN one epoch at a time using warm_start so we can record
+    # both training and validation log-loss after every epoch.
+    ann = MLPClassifier(
+        hidden_layer_sizes=(64, 32),
+        max_iter=1,
+        warm_start=True,
+        random_state=RANDOM_SEED,
+    )
+
+    classes = np.unique(y_train)
+    train_losses = []
+    val_losses   = []
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=ConvergenceWarning)
+        for _ in range(ANN_EPOCHS):
+            ann.fit(x_train, y_train)
+            train_proba = ann.predict_proba(x_train)
+            val_proba   = ann.predict_proba(x_val)
+            train_losses.append(log_loss(y_train, train_proba, labels=classes))
+            val_losses.append(log_loss(y_val,   val_proba,   labels=classes))
+        #
+    #
+
+    return ann, train_losses, val_losses
 #
 
 
@@ -234,15 +264,15 @@ def _export_models(trained_models, paths):
 #
 
 
-def _export_plots(results_df, trained_models, split_frames, label_encoder, paths):
+def _export_plots(results_df, trained_models, ann_train_losses, ann_val_losses, split_frames, label_encoder, paths):
     _plot_metric_comparison(results_df, "accuracy", paths["output_dir"] / "plot_model_accuracy.png")
     _plot_metric_comparison(results_df, "f1_weighted", paths["output_dir"] / "plot_model_f1.png")
 
     # Grouped bar chart of all metrics on one figure
     _plot_metrics_grouped(results_df, paths["output_dir"] / "plot_model_metrics_combined.png")
 
-    # ANN epoch-error (training loss) curve
-    _plot_ann_loss_curve(trained_models, paths)
+    # ANN epoch-error curve with both training and validation loss
+    _plot_ann_loss_curve(ann_train_losses, ann_val_losses, paths)
 
     test_df = split_frames["test"]
     x_test  = test_df[list(FEATURE_COLUMNS)].values
@@ -338,16 +368,12 @@ def _plot_metric_comparison(results_df, metric_name, output_path):
 #
 
 
-def _plot_ann_loss_curve(trained_models, paths):
-    # Plot training loss per iteration from the fitted ANN (loss_curve_ attribute)
-    ann_model   = trained_models["ANN"]
-    loss_values = ann_model.loss_curve_
-    iterations  = list(range(1, len(loss_values) + 1))
+def _plot_ann_loss_curve(ann_train_losses, ann_val_losses, paths):
+    iterations = list(range(1, len(ann_train_losses) + 1))
 
     fig, axis = plt.subplots(figsize=(8, 5))
-
-    # Draw training loss curve
-    axis.plot(iterations, loss_values, label="Training Loss", color="#1f77b4")
+    axis.plot(iterations, ann_train_losses, label="Training Loss",   color="#1f77b4")
+    axis.plot(iterations, ann_val_losses,   label="Validation Loss", color="#ff7f0e")
 
     axis.set_title("ANN Training Loss Curve (Epoch-Error)")
     axis.set_xlabel("Epoch (Iteration)")
@@ -443,33 +469,51 @@ def _train_and_evaluate(split_frames, label_encoder):
     prediction_frames = []
 
     train_df = split_frames["train"]
-    x_train = train_df[list(FEATURE_COLUMNS)].values
-    y_train = train_df["encoded_class"].values
+    x_train  = train_df[list(FEATURE_COLUMNS)].values
+    y_train  = train_df["encoded_class"].values
 
-    # Fit each model on the training split and evaluate across all splits
+    val_df = split_frames["validation"]
+    x_val  = val_df[list(FEATURE_COLUMNS)].values
+    y_val  = val_df["encoded_class"].values
+
+    # Train ANN epoch-by-epoch to capture per-epoch train and validation loss
+    print("Training ANN...")
+    ann_model, ann_train_losses, ann_val_losses = _train_ann_with_curves(
+        x_train, y_train, x_val, y_val
+    )
+    trained_models["ANN"] = ann_model
+
+    for split_label in SPLIT_LABELS:
+        split_df = split_frames[split_label]
+        x_values = split_df[list(FEATURE_COLUMNS)].values
+        y_values = split_df["encoded_class"].values
+
+        performance_row, predictions_df = _evaluate_model(
+            ann_model, split_label, x_values, y_values, label_encoder
+        )
+        performance_row["model"] = "ANN"
+        predictions_df.insert(0, "model", "ANN")
+        performance_rows.append(performance_row)
+        prediction_frames.append(predictions_df)
+    #
+
+    # Fit remaining models on the training split and evaluate across all splits
     for model_name, model in models.items():
         print(f"Training {model_name}...")
 
         model.fit(x_train, y_train)
         trained_models[model_name] = dpcpy(model)
 
-        # Score the fitted model on every split (train, validation, test)
         for split_label in SPLIT_LABELS:
             split_df = split_frames[split_label]
             x_values = split_df[list(FEATURE_COLUMNS)].values
             y_values = split_df["encoded_class"].values
 
             performance_row, predictions_df = _evaluate_model(
-                model,
-                split_label,
-                x_values,
-                y_values,
-                label_encoder,
+                model, split_label, x_values, y_values, label_encoder
             )
-
             performance_row["model"] = model_name
             predictions_df.insert(0, "model", model_name)
-
             performance_rows.append(performance_row)
             prediction_frames.append(predictions_df)
         #
@@ -491,7 +535,7 @@ def _train_and_evaluate(split_frames, label_encoder):
 
     results_df = results_df[ordered_columns]
 
-    return trained_models, results_df, predictions_df
+    return trained_models, results_df, predictions_df, ann_train_losses, ann_val_losses
 #
 
 
@@ -504,12 +548,12 @@ def main():
     label_encoder = LabelEncoder()
     split_frames = _split_feature_data(features_df, label_encoder)
 
-    trained_models, results_df, predictions_df = _train_and_evaluate(split_frames, label_encoder)
+    trained_models, results_df, predictions_df, ann_train_losses, ann_val_losses = _train_and_evaluate(split_frames, label_encoder)
 
     _export_models(trained_models, paths)
     _export_excel(results_df, predictions_df, paths)
     _export_classifier_params(results_df, paths)
-    _export_plots(results_df, trained_models, split_frames, label_encoder, paths)
+    _export_plots(results_df, trained_models, ann_train_losses, ann_val_losses, split_frames, label_encoder, paths)
 
     print("\nClassifier stage completed successfully.")
     print(f"Performance Excel: {(paths['output_dir'] / 'model_performance.xlsx').as_posix()}")
