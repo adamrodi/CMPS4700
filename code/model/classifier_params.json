@@ -16,5 +16,10 @@
   ],
   "random_seed": 4700,
   "selection_metric": "test f1_weighted",
-  "split_column": "split"
+  "split_column": "split",
+  "splits_evaluated": [
+    "train",
+    "validation",
+    "test"
+  ]
 }
