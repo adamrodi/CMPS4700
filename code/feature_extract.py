@@ -1,11 +1,11 @@
-#Version: v1.0
-#Date Last Updated: 04-12-2026
+#Version: v1.1
+#Date Last Updated: 05-01-2026
 
 #%% MODULE BEGINS
 module_name = "feature_extract"
 
 """
-Version: v1.0
+Version: v1.1
 
 Description:
     Feature extraction pipeline for CMPS 470 stellar classification project.
@@ -17,15 +17,16 @@ Authors:
     Group B
 
 Date Created     : 04-12-2026
-Date Last Updated: 04-12-2026
+Date Last Updated: 05-01-2026
 
 Doc:
-    Input : code/output/preprocessed_data.xlsx  (PA1 output, z-score scaled)
+    Input : code/input/<split>/<split>.csv  (PA1 output, z-score scaled)
     Output: code/output/features_data.xlsx
+            code/output/Data.xlsx
             code/model/pca_params.json
             code/output/plot_correlation_heatmap.png
             code/output/plot_pca_cumulative_variance.png
-            code/output/plot_pca_scatter_pc1_pc2.png
+            code/output/plot_pca_scatter_pairs.png
             code/output/plot_pca_scree.png
 
 Notes:
@@ -385,6 +386,45 @@ def _plot_scree(pca, n_components, output_path):
 #
 
 
+def _export_data_template(split_frames, pca_frames, paths):
+    # Write Data.xlsx in the professor's template format with 6 sheets
+    ZSCORE_SHEETS = {"train": "Training", "validation": "Validation", "test": "Testing"}
+    PCA_SHEETS    = {"train": "Training_PCA", "validation": "Validation_PCA", "test": "Testing_PCA"}
+    PC_COLUMNS    = [col for col in pca_frames["train"].columns if col.startswith("PC")]
+    output_path   = paths["output_dir"] / "Data.xlsx"
+
+    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+        # Z-scored feature sheets (original 8 features after scaling)
+        for split_label, sheet_name in ZSCORE_SHEETS.items():
+            raw_df    = split_frames[split_label].reset_index(drop=True)
+            export_df = pd.DataFrame()
+            export_df["SAMPLE ID"] = raw_df.index + 1
+            export_df["TARGET"]    = raw_df[CLASS_COLUMN].values
+
+            for col in FEATURE_COLUMNS:
+                export_df[col] = raw_df[col].values
+            #
+
+            export_df.to_excel(writer, index=False, sheet_name=sheet_name)
+        #
+
+        # PCA feature sheets (PC1–PC5)
+        for split_label, sheet_name in PCA_SHEETS.items():
+            pca_df    = pca_frames[split_label].reset_index(drop=True)
+            export_df = pd.DataFrame()
+            export_df["SAMPLE ID"] = pca_df.index + 1
+            export_df["TARGET"]    = pca_df[CLASS_COLUMN].values
+
+            for col in PC_COLUMNS:
+                export_df[col] = pca_df[col].values
+            #
+
+            export_df.to_excel(writer, index=False, sheet_name=sheet_name)
+        #
+    #
+#
+
+
 def main():
     paths = _get_paths()
     _ensure_output_dirs(paths)
@@ -397,10 +437,12 @@ def main():
 
     _export_pca_params(pca, n_components, paths)
     _export_excel(features_df, corr_matrix, paths)
+    _export_data_template(split_frames, pca_frames, paths)
     _export_plots(pca, n_components, pca_frames, corr_matrix, paths)
 
     print("PA2 feature extraction completed successfully.")
     print(f"Features Excel : {(paths['output_dir'] / 'features_data.xlsx').as_posix()}")
+    print(f"Data template  : {(paths['output_dir'] / 'Data.xlsx').as_posix()}")
     print(f"PCA params     : {(paths['model_dir']  / 'pca_params.json').as_posix()}")
     print(f"n_components   : {n_components}  ({VARIANCE_THRESHOLD:.0%} variance threshold)")
 #
