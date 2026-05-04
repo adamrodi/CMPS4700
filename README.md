@@ -1,103 +1,57 @@
-# CMPS 4700 Stellar Classification Project
+# Stellar Object Classification
 
-Group B — Adam Rodi & Ron Logarbo
+Machine learning pipeline that classifies astronomical objects (star, galaxy, or quasar) from photometric and spectral measurements. Best model (neural network) achieves **96.96% accuracy** on 20,000 held-out test samples.
 
-## Quick Start
+![Model Performance](code/output/plot_model_metrics_combined.png)
 
-### 1. Clone + setup the venv**
+## Results
+
+Test set performance across all four classifiers:
+
+| Model         | Accuracy | F1    | AUC   |
+|---------------|----------|-------|-------|
+| **ANN**       | **96.96%** | **96.93%** | **99.25%** |
+| SVM           | 95.47%   | 95.41% | 98.21% |
+| K-NN          | 92.78%   | 92.72% | 96.62% |
+| Decision Tree | 92.16%   | 92.15% | 92.64% |
+
+## What It Does
+
+Uses the [Sloan Digital Sky Survey DR17 dataset](https://www.kaggle.com/datasets/fedesoriano/stellar-classification-dataset-sdss17) (~100,000 observations) to build a three-class classifier (STAR / GALAXY / QSO) from 8 photometric and positional features. The pipeline preprocesses the raw data, reduces it to 5 principal components capturing 99.6% of variance, then trains and evaluates four classifiers. All outputs — trained models, metrics, predictions, and plots — are generated automatically by running a single script.
+
+## How to Run
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
+git clone https://github.com/adamrodi/CMPS4700_Group_B.git
+cd CMPS4700_Group_B
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
+python3 code/pipeline.py
 ```
 
-### 2. Run the preprocessing
-```bash
-python3 code/preprocess.py
+All outputs are written to `code/output/` and `code/model/`.
+
+## How It Works
+
+- **Preprocessing** — Drops identifier columns, applies stratified 60/20/20 train/val/test split, and z-score scales features (fit on training data only to prevent leakage).
+- **Feature Extraction** — Computes an 8×8 Pearson correlation matrix, then fits PCA on the training split; 5 components capture 99.6% of variance and are used as classifier inputs.
+- **Classification** — Trains ANN, SVM, Decision Tree, and K-NN on the 5 PCs; evaluates each on all three splits using accuracy, precision, recall, specificity, F1, and AUC.
+
+## Repository Layout
+
 ```
-
-That's it. This will generate the PA1 outputs including two Excel files (raw and preprocessed data) and three PNG plots. Everything goes into `code/output/`.
-
-## What Is This?
-
-We're building a stellar classification system using machine learning. The dataset is from the Sloan Digital Sky Survey (SDSS DR17) and contains ~100k observations of astronomical objects classified as STAR, GALAXY, or QSO (quasar).
-
-**The goal:** Use ANN, SVM, Decision Tree, and K-NN to predict which class an object belongs to, based on photometric and positional features. Pretty standard ML pipeline stuff.
-
-**The assignment:** CMPS 4700 project, broken into phases:
-
-- **PA1:** Preprocessing (raw data cleaning, splitting, scaling, and exploratory plots)
-
-## What's in Here
-
-```text
 code/
-  preprocess.py          — Preprocessing pipeline (PA1 + extensible)
-  input/
-    star_classification.csv  — Raw 100k row SDSS dataset
-    train/               — Will hold train split later
-    test/                — Will hold test split later
-  output/
-    raw_data.xlsx        — Raw data export for report
-    preprocessed_data.xlsx — Cleaned + scaled + split data
-    plot_*.png           — Plots for the report
-    preprocessing_summary.json — Data about what we did
-  model/
-    scaler_params.json   — Z-score stats (means/stds) to use on new data
+  pipeline.py          — runs the full pipeline end-to-end
+  preprocess.py        — PA1: cleaning, splitting, scaling
+  feature_extract.py   — PA2: correlation analysis, PCA
+  classifier.py        — PA3: model training and evaluation
+  input/               — raw CSV + train/val/test splits
+  output/              — plots, Excel exports, predictions
+  model/               — serialized models + parameter JSON files
 docs/
-  Project_4570.pdf       — The actual assignment spec (read this if confused)
-  Project_4570.pptx      — Report template
-  GroupB_proposal.pptx   — Our proposal to the professor
+  submissions/         — final report and presentation
 ```
 
-## Environment
+## Authors
 
-We're using a virtual environment to keep python clean. Activate it before running anything:
-
-```bash
-source venv/bin/activate
-```
-
-If you add new dependencies, do it with pip inside the venv, then update requirements.txt:
-
-```bash
-pip install <package>
-pip freeze > requirements.txt
-```
-
-Then commit requirements.txt.
-
-## Current Status (PA1)
-
-**Done:**
-
-- ✅ Read raw CSV (100k × 18 columns)
-- ✅ Dropped 9 identifier columns (obj_ID, run_ID, etc.)
-- ✅ Kept 8 features: u, g, r, i, z (photometric filters), alpha, delta (coordinates), redshift
-- ✅ Created stratified 60/20/20 train/val/test split (class-balanced)
-- ✅ Applied z-score scaling (fit on train only, to avoid leakage)
-- ✅ Generated three plots showing data distribution and preprocessing effects
-- ✅ Exported two Excel files and metadata JSON
-
-**Verified:**
-
-- Split is perfectly stratified (GALAXY/STAR/QSO proportions maintained)
-- Raw: 100k rows, 18 columns
-- Preprocessed: 100k rows, 8 features + class + split label
-- No data leakage in scaling
-
-**Not done (PA1):**
-
-- PDF report still needs a narrative + embedded plots. Code, data, and plots are ready.
-
-## How the Preprocessing Works
-
-1. **Read** the raw CSV
-2. **Clean** by dropping identifier columns we don't need
-3. **Check** that the data looks right (schema validation)
-4. **Split** into train/val/test using stratified sampling (preserves class balance)
-5. **Scale** each numeric feature using z-score (mean=0, std=1) — trained on train split only
-6. **Export** two Excel files + plots + scaler metadata
-
-The scaler parameters (means/stds) are saved in `code/model/scaler_params.json` so the next phases can apply the same transformation to new data.
+Adam Rodi & Ron Logarbo — CMPS 4700, Group B
